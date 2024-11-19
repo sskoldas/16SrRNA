@@ -1,0 +1,21 @@
+#!/bin/bash
+set -e
+set -u
+
+export PATH=$PATH:$PWD/sratoolkit.3.0.0-ubuntu64/bin
+
+mkdir -p ~/PRJNA423040
+cd ~/PRJNA423040
+
+SECONDS=0
+
+prefetch PRJNA423040 
+
+for i in *
+do
+    fasterq-dump $i
+done
+
+duration=$SECONDS
+echo "Installing took $(($duration / 3600)) hours, \
+ $(($duration / 60)) minutes and $(($duration % 60)) seconds."
