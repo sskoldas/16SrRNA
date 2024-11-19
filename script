@@ -3,57 +3,49 @@
 set -e
 set -u
 
+#install usearch, vseach, fastQC
 export usearch=path/to/usearch11.0.667_i86linux32
 
-cd ../data/PRJEB28175
+if [ x$usearch == x ] ; then
+	echo Must set \$usearch >> /dev/stderr
+	exit 1
+fi
 
-mkdir output
+cd ~/PRJNA423040
+rm -rf ./output
+mkdir -p ./output
+cd ./output
 
 SECONDS=0
 
 echo "STEP1: assembling reads..."
 
-# if you have single end reads
-cat *.fastq >> ./output/merged.fq
+# we have single end reads
+cat ../*.fastq >> merged.fastq
 
-# if you have paired end reads
-$usearch -fastq_mergepairs *_R1.fastq -relabel @ -fastq_minmergelen 230 -fastq_maxmergelen 270 -fastqout ./output/merged.fq 
-
-
-mkdir fastqc_check_before
-
+mkdir -p fastqc_check_before
 echo "STEP2:running FAST QC on merged raw fastq files..."
-fastqc ./output/merged.fq -o ./fastqc_check_before
+fastqc merged.fastq -o ./fastqc_check_before
 
 echo "STEP3: filtering the reads..."
-#you may need to tweak your filtering parameters 
-$usearch -fastq_filter ./output/merged.fq -fastq_maxee 1.0 -fastqout ./output/filtered.fq
-
-#echo "converting FASTQ file to FASTA file..."
-#awk 'NR%4==1{a=substr($0,2);}NR%4==2{print ">"a"\n"$0}' ./output/merged.fq >> ./output/merged.fasta
-
-#echo "counting the number of reads..."
-#awk 'END{print NR/4}' ./output/merged.fasta
-
-echo "extracting sample names..."
-$usearch -fastx_get_sample_names ./output/filtered.fq -output ./output/sample_names.txt
+# Strip primer (CCGTCAATTCMTTTRAGT, len 18,  strips 30 bases as stated)
+$usearch -fastx_truncate merged.fastq -stripleft 30 -fastqout reads_stripped.fastq
+$usearch -fastq_filter reads_stripped.fastq -fastq_maxee 1.0 -fastq_trunclen 350 -fastaout filtered.fa
 
 echo "STEP4:dereplication: findind the unique sequences and abundances..."
-$usearch -fastx_uniques ./output/filtered.fq -sizeout -relabel Uniq -fastaout ./output/uniques.fasta -sizeout
+vsearch --derep_fulllength filtered.fa -sizeout -relabel Uniq -output uniques.fa
 
 echo "STEP5:picking OTUs and checking chimeras and discarding...it makes 97% OTUs"
-$usearch -cluster_otus ./output/uniques.fasta -otus ./output/otu.fasta \
- -uparseout ./output/cluster_otus_detail.up -minsize 2 -relabel OTU -log ./output/cluster_otus.log
+$usearch -cluster_otus uniques.fa -minsize 2 -otus otus.fa -relabel Otu \
+ -uparseout cluster_otus_detail.up -log cluster_otus.log
 
 echo "STEP6:creating OTU tables..."
-$usearch -usearch_global ./output/merged.fq -db ./output/otu.fasta -strand plus -id 0.97 -otutabout ./output/otutable.txt 
-#$usearch -otutab ./output/merged.fq -otus ./output/otu.fasta -otutabout ./output/otutab.txt -mapout ./output/map.txt -notmatched ./output/unmapped.fa -sizeout
-#$usearch -makeudb_usearch ../db/rdp_16s_v18.fa -output ../db/rdp_16s.udb
+$usearch -otutab filtered.fa -otus otus.fa -otutabout otutab_raw.txt
 
 echo "STEP7:assigning taxonomy to the OTU table..."
-$usearch -sintax ./output/otu.fasta -db ../../db/rdp_16s.udb -tabbedout ./output/reads.sintax -strand plus -sintax_cutoff 0.8 -log ./output/sintax_log.txt
-#$usearch -sintax_summary ./output/reads.sintax -otutabin ./output/otutable.txt -output ./output/genus_summary.txt -rank g 
-#$usearch -nbc_tax ./output/otu.fasta -db ../../db/rdp_16s_v18.fa -strand plus -tabbedout ./output/nbc_tax.txt
+db_path="path/to/SILVA138.1_VSEARCH-formatted.udb"
+$usearch -sintax otus.fa -db "$db_path" -strand both \
+  -tabbedout sintax.txt -sintax_cutoff 0.8
 
 echo %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 echo ANALYSIS COMPLETE
