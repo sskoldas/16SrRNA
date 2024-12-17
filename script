@@ -43,7 +43,7 @@ echo "STEP6:creating OTU tables..."
 $usearch -otutab filtered.fa -otus otus.fa -otutabout otutab_raw.txt
 
 echo "STEP7:assigning taxonomy to the OTU table..."
-db_path="path/to/SILVA138.1_VSEARCH-formatted.udb"
+db_path="path/to/rdp_16s_v18.fa"
 $usearch -sintax otus.fa -db "$db_path" -strand both \
   -tabbedout sintax.txt -sintax_cutoff 0.8
 
